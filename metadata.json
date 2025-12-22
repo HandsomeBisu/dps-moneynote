@@ -1,0 +1,5 @@
+{
+  "name": "MoneyNote Toss Style",
+  "description": "A minimalist finance tracker inspired by Toss UI, integrated with Firebase.",
+  "requestFramePermissions": []
+}
