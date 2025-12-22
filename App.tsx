@@ -7,6 +7,7 @@ import TransactionItem from './components/TransactionItem';
 import AddTransactionSheet from './components/AddTransactionSheet';
 import CalendarSheet from './components/CalendarSheet';
 import MonthPickerSheet from './components/MonthPickerSheet';
+import TransactionDetailSheet from './components/TransactionDetailSheet';
 import LoginScreen from './components/LoginScreen';
 
 const App: React.FC = () => {
@@ -15,15 +16,52 @@ const App: React.FC = () => {
   const [rawTransactions, setRawTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  // State for UI controls
-  const [isAddSheetOpen, setIsAddSheetOpen] = useState(false);
-  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
+  // UI State controlled by URL Hash for Back Button support
+  const [view, setView] = useState<'main' | 'add' | 'calendar' | 'month' | 'detail'>('main');
+  
   const [showButton, setShowButton] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
 
-  // Month Filtering State
+  // Selection States
   const [selectedMonthKey, setSelectedMonthKey] = useState<string>(''); // Format: "YYYY-MM"
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+
+  // --- History & Navigation Logic ---
+  
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      if (hash === '#add') setView('add');
+      else if (hash === '#calendar') setView('calendar');
+      else if (hash === '#month') setView('month');
+      else if (hash === '#detail') setView('detail');
+      else setView('main');
+    };
+
+    // Initialize view based on current hash
+    handleHashChange();
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  const openSheet = (hash: string) => {
+    window.location.hash = hash;
+  };
+
+  const closeSheet = () => {
+    // Only go back if we are currently in a hash state to prevent exiting the app
+    if (window.location.hash) {
+      window.history.back();
+    }
+  };
+
+  // Derived states for components
+  const isAddSheetOpen = view === 'add';
+  const isCalendarOpen = view === 'calendar';
+  const isMonthPickerOpen = view === 'month';
+  const isDetailSheetOpen = view === 'detail';
 
   // Monitor Auth State
   useEffect(() => {
@@ -85,6 +123,14 @@ const App: React.FC = () => {
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, [lastScrollY]);
+
+  // Reset editing transaction when Add Sheet closes
+  useEffect(() => {
+    if (!isAddSheetOpen) {
+      const timer = setTimeout(() => setEditingTransaction(null), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isAddSheetOpen]);
 
   // --- Derived Data Calculations ---
 
@@ -169,6 +215,26 @@ const App: React.FC = () => {
     return `${y}년 ${m}월`;
   }, [selectedMonthKey]);
 
+  // --- Handlers ---
+
+  const handleTransactionClick = (transaction: Transaction) => {
+    setSelectedTransaction(transaction);
+    openSheet('detail');
+  };
+
+  const handleEditClick = (transaction: Transaction) => {
+    setEditingTransaction(transaction);
+    // Push 'add' on top of history. 
+    // This allows the Back button to return to 'detail' if it was open, or 'main' depending on flow.
+    // If we want to replace 'detail' with 'add' in history, we'd use replace, but push is safer for navigation.
+    openSheet('add'); 
+  };
+
+  const handleAddSheetClose = () => {
+    closeSheet();
+    // editingTransaction reset is handled by useEffect
+  };
+
   // --- Render ---
 
   if (authChecking) {
@@ -211,7 +277,7 @@ const App: React.FC = () => {
               
               {/* Styled Chip Button for Month Picker */}
               <button
-                onClick={() => setIsMonthPickerOpen(true)}
+                onClick={() => openSheet('month')}
                 className="flex items-center gap-1 bg-gray-200/50 hover:bg-gray-200 text-gray-600 px-3 py-1 rounded-full transition-all active:scale-95"
               >
                 <span className="text-xs font-bold leading-none pt-0.5">{selectedMonthText}</span>
@@ -231,7 +297,7 @@ const App: React.FC = () => {
           
           {/* Mini Dashboard / Current Balance */}
           <div 
-            onClick={() => setIsCalendarOpen(true)}
+            onClick={() => openSheet('calendar')}
             className="mt-6 bg-white p-5 rounded-[24px] shadow-sm flex justify-between items-center cursor-pointer active:scale-[0.98] transition-transform hover:shadow-md"
           >
              <div>
@@ -272,7 +338,10 @@ const App: React.FC = () => {
                 <div className="bg-white rounded-[24px] px-5 py-2 shadow-sm">
                   {group.transactions.map((t, idx) => (
                     <React.Fragment key={t.id}>
-                      <TransactionItem transaction={t} />
+                      <TransactionItem 
+                        transaction={t} 
+                        onClick={handleTransactionClick}
+                      />
                       {idx < group.transactions.length - 1 && (
                         <div className="h-[1px] bg-gray-100 ml-14" />
                       )}
@@ -288,7 +357,10 @@ const App: React.FC = () => {
       {/* Floating Action Button */}
       <div className={`fixed bottom-6 right-1/2 transform translate-x-1/2 sm:translate-x-0 sm:right-6 sm:bottom-8 z-40 transition-all duration-300 ${showButton ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0'}`}>
         <button
-          onClick={() => setIsAddSheetOpen(true)}
+          onClick={() => {
+            setEditingTransaction(null); // Ensure add mode
+            openSheet('add');
+          }}
           className="bg-blue-500 hover:bg-blue-600 text-white rounded-full p-4 shadow-lg shadow-blue-500/40 transition-all active:scale-90 flex items-center justify-center group"
           aria-label="Add Transaction"
         >
@@ -301,21 +373,30 @@ const App: React.FC = () => {
 
       <AddTransactionSheet 
         isOpen={isAddSheetOpen} 
-        onClose={() => setIsAddSheetOpen(false)} 
+        onClose={handleAddSheetClose} 
+        initialTransaction={editingTransaction}
       />
 
       <CalendarSheet 
         isOpen={isCalendarOpen}
-        onClose={() => setIsCalendarOpen(false)}
+        onClose={closeSheet}
         transactions={rawTransactions}
+        onTransactionClick={handleTransactionClick}
       />
 
       <MonthPickerSheet
         isOpen={isMonthPickerOpen}
-        onClose={() => setIsMonthPickerOpen(false)}
+        onClose={closeSheet}
         availableMonths={availableMonths}
         selectedMonthKey={selectedMonthKey}
         onSelect={setSelectedMonthKey}
+      />
+
+      <TransactionDetailSheet
+        isOpen={isDetailSheetOpen}
+        onClose={closeSheet}
+        transaction={selectedTransaction}
+        onEdit={handleEditClick}
       />
     </div>
   );

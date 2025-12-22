@@ -4,13 +4,17 @@ import { formatCurrency, formatTime } from '../utils/format';
 
 interface Props {
   transaction: Transaction;
+  onClick?: (transaction: Transaction) => void;
 }
 
-const TransactionItem: React.FC<Props> = ({ transaction }) => {
+const TransactionItem: React.FC<Props> = ({ transaction, onClick }) => {
   const isIncome = transaction.type === 'income';
   
   return (
-    <div className="flex items-center justify-between py-4 active:bg-gray-50 transition-colors px-1 -mx-1 rounded-lg cursor-pointer">
+    <div 
+      onClick={() => onClick && onClick(transaction)}
+      className="flex items-center justify-between py-4 active:bg-gray-50 transition-colors px-1 -mx-1 rounded-lg cursor-pointer"
+    >
       <div className="flex items-center gap-4">
         <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg shadow-sm ${isIncome ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'}`}>
           {isIncome ? '💰' : '💸'}

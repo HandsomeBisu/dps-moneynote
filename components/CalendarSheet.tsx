@@ -7,9 +7,10 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   transactions: Transaction[]; // Expects all transactions (with balanceAfter calculated)
+  onTransactionClick: (t: Transaction) => void;
 }
 
-const CalendarSheet: React.FC<Props> = ({ isOpen, onClose, transactions }) => {
+const CalendarSheet: React.FC<Props> = ({ isOpen, onClose, transactions, onTransactionClick }) => {
   const [animationClass, setAnimationClass] = useState('translate-y-full');
   const [currentDate, setCurrentDate] = useState(new Date()); // For Calendar Navigation
   const [selectedDate, setSelectedDate] = useState<Date>(new Date()); // User clicked date
@@ -167,7 +168,7 @@ const CalendarSheet: React.FC<Props> = ({ isOpen, onClose, transactions }) => {
            ) : (
              selectedDateTransactions.map((t, idx) => (
                 <div key={t.id} className="mb-2">
-                   <TransactionItem transaction={t} />
+                   <TransactionItem transaction={t} onClick={onTransactionClick} />
                    {idx < selectedDateTransactions.length - 1 && <div className="h-[1px] bg-gray-50 ml-14 my-1" />}
                 </div>
              ))

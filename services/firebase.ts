@@ -10,7 +10,10 @@ import {
 import { 
   getFirestore, 
   collection, 
-  addDoc, 
+  addDoc,
+  deleteDoc,
+  updateDoc,
+  doc, 
   onSnapshot, 
   query, 
   where,
@@ -77,6 +80,34 @@ export const addTransaction = async (
     });
   } catch (e) {
     console.error("Error adding document: ", e);
+    throw e;
+  }
+};
+
+export const updateTransaction = async (
+  transactionId: string,
+  data: { amount: number; description: string; type: 'income' | 'expense' }
+) => {
+  try {
+    const docRef = doc(db, COLLECTION_NAME, transactionId);
+    await updateDoc(docRef, {
+      amount: data.amount,
+      description: data.description,
+      type: data.type
+      // Note: We typically don't update the 'date' unless requested, 
+      // keeping the original transaction time.
+    });
+  } catch (e) {
+    console.error("Error updating document: ", e);
+    throw e;
+  }
+};
+
+export const deleteTransaction = async (transactionId: string) => {
+  try {
+    await deleteDoc(doc(db, COLLECTION_NAME, transactionId));
+  } catch (e) {
+    console.error("Error deleting document: ", e);
     throw e;
   }
 };

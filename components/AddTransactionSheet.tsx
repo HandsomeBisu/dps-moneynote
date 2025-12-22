@@ -1,28 +1,41 @@
 import React, { useState, useEffect } from 'react';
-import { addTransaction, auth } from '../services/firebase';
-import { TransactionType } from '../types';
+import { addTransaction, updateTransaction, auth } from '../services/firebase';
+import { Transaction, TransactionType } from '../types';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  initialTransaction?: Transaction | null; // If present, we are in Edit Mode
 }
 
-const AddTransactionSheet: React.FC<Props> = ({ isOpen, onClose }) => {
+const AddTransactionSheet: React.FC<Props> = ({ isOpen, onClose, initialTransaction }) => {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<TransactionType>('expense');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [animationClass, setAnimationClass] = useState('translate-y-full');
 
-  // Handle entry/exit animation
+  // Handle entry/exit animation and Reset/Populate form
   useEffect(() => {
     if (isOpen) {
-      // Small delay to allow render before animating in
       setTimeout(() => setAnimationClass('translate-y-0'), 10);
+      
+      if (initialTransaction) {
+        // Edit Mode: Populate fields
+        setAmount(String(initialTransaction.amount));
+        setDescription(initialTransaction.description);
+        setType(initialTransaction.type);
+      } else {
+        // Add Mode: Reset fields
+        setAmount('');
+        setDescription('');
+        setType('expense');
+      }
     } else {
       setAnimationClass('translate-y-full');
+      // Delay clearing state until animation finishes (optional, but safer to do on open)
     }
-  }, [isOpen]);
+  }, [isOpen, initialTransaction]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,11 +50,20 @@ const AddTransactionSheet: React.FC<Props> = ({ isOpen, onClose }) => {
 
     setIsSubmitting(true);
     try {
-      await addTransaction(user.uid, Number(amount.replace(/,/g, '')), description, type);
-      // Reset and close
-      setAmount('');
-      setDescription('');
-      setType('expense');
+      const numAmount = Number(amount.replace(/,/g, ''));
+      
+      if (initialTransaction) {
+        // Update
+        await updateTransaction(initialTransaction.id, {
+          amount: numAmount,
+          description,
+          type
+        });
+      } else {
+        // Create
+        await addTransaction(user.uid, numAmount, description, type);
+      }
+
       onClose();
     } catch (err) {
       console.error(err);
@@ -57,6 +79,8 @@ const AddTransactionSheet: React.FC<Props> = ({ isOpen, onClose }) => {
   };
 
   if (!isOpen && animationClass === 'translate-y-full') return null;
+
+  const isEditMode = !!initialTransaction;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
@@ -76,7 +100,9 @@ const AddTransactionSheet: React.FC<Props> = ({ isOpen, onClose }) => {
       >
         <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-6" />
         
-        <h2 className="text-xl font-bold text-gray-900 mb-6">내역 입력</h2>
+        <h2 className="text-xl font-bold text-gray-900 mb-6">
+          {isEditMode ? '내역 수정' : '내역 입력'}
+        </h2>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           
@@ -108,7 +134,7 @@ const AddTransactionSheet: React.FC<Props> = ({ isOpen, onClose }) => {
                 onChange={handleAmountChange}
                 placeholder="0"
                 className="w-full text-3xl font-bold text-gray-900 placeholder-gray-300 border-b-2 border-transparent focus:border-blue-500 outline-none py-2 bg-transparent transition-colors"
-                autoFocus={isOpen}
+                autoFocus={isOpen && !isEditMode} // Don't autofocus on edit to prevent jarring jumps
               />
               <span className="absolute right-0 bottom-3 text-lg font-bold text-gray-900">원</span>
             </div>
@@ -136,7 +162,7 @@ const AddTransactionSheet: React.FC<Props> = ({ isOpen, onClose }) => {
               ${(!amount || !description) ? 'bg-gray-300 shadow-none cursor-not-allowed' : 'bg-blue-500 shadow-blue-500/30 hover:bg-blue-600'}
             `}
           >
-            {isSubmitting ? '저장 중...' : '확인'}
+            {isSubmitting ? '저장 중...' : (isEditMode ? '수정 완료' : '확인')}
           </button>
           
           <div className="h-4 sm:hidden"></div> {/* Safe area spacer */}
