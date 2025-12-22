@@ -6,6 +6,7 @@ import { formatCurrency, formatDateTitle } from './utils/format';
 import TransactionItem from './components/TransactionItem';
 import AddTransactionSheet from './components/AddTransactionSheet';
 import CalendarSheet from './components/CalendarSheet';
+import MonthPickerSheet from './components/MonthPickerSheet';
 import LoginScreen from './components/LoginScreen';
 
 const App: React.FC = () => {
@@ -17,6 +18,7 @@ const App: React.FC = () => {
   // State for UI controls
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   const [showButton, setShowButton] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
 
@@ -134,9 +136,6 @@ const App: React.FC = () => {
   // 4. Calculate Total Current Balance (Using the very last transaction in time)
   const totalBalance = useMemo(() => {
     if (rawTransactions.length === 0) return 0;
-    // rawTransactions is sorted Oldest -> Newest implicitly by the logic in useEffect?
-    // Wait, in useEffect we did map on sortedAsc. So rawTransactions is Oldest -> Newest.
-    // The last element has the latest balance.
     return rawTransactions[rawTransactions.length - 1].balanceAfter || 0;
   }, [rawTransactions]);
 
@@ -162,6 +161,13 @@ const App: React.FC = () => {
       new Date(b.transactions[0].date).getTime() - new Date(a.transactions[0].date).getTime()
     );
   }, [filteredTransactions]);
+
+  // Helper to display current selection text
+  const selectedMonthText = useMemo(() => {
+    if (!selectedMonthKey) return '';
+    const [y, m] = selectedMonthKey.split('-');
+    return `${y}년 ${m}월`;
+  }, [selectedMonthKey]);
 
   // --- Render ---
 
@@ -197,28 +203,22 @@ const App: React.FC = () => {
 
       <main className="max-w-md mx-auto px-5 pt-2">
         
-        {/* Main Balance Card with Dropdown */}
+        {/* Main Balance Card with Custom Month Picker */}
         <section className="mb-8">
           <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-2">
               <span className="text-sm font-semibold text-gray-500">이번 달 쓴 돈</span>
               
-              {/* Custom Dropdown Trigger */}
-              <div className="relative inline-block">
-                <select 
-                  value={selectedMonthKey}
-                  onChange={(e) => setSelectedMonthKey(e.target.value)}
-                  className="appearance-none bg-transparent text-sm font-bold text-blue-600 pr-6 pl-1 py-0.5 outline-none cursor-pointer hover:bg-gray-100 rounded-md transition-colors"
-                >
-                  {availableMonths.map(key => {
-                     const [y, m] = key.split('-');
-                     return <option key={key} value={key}>{y}년 {m}월</option>
-                  })}
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-1 flex items-center text-blue-600">
-                  <svg className="fill-current h-3 w-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-                </div>
-              </div>
+              {/* Styled Chip Button for Month Picker */}
+              <button
+                onClick={() => setIsMonthPickerOpen(true)}
+                className="flex items-center gap-1 bg-gray-200/50 hover:bg-gray-200 text-gray-600 px-3 py-1 rounded-full transition-all active:scale-95"
+              >
+                <span className="text-xs font-bold leading-none pt-0.5">{selectedMonthText}</span>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
             </div>
 
             <div className="flex items-baseline gap-1">
@@ -308,6 +308,14 @@ const App: React.FC = () => {
         isOpen={isCalendarOpen}
         onClose={() => setIsCalendarOpen(false)}
         transactions={rawTransactions}
+      />
+
+      <MonthPickerSheet
+        isOpen={isMonthPickerOpen}
+        onClose={() => setIsMonthPickerOpen(false)}
+        availableMonths={availableMonths}
+        selectedMonthKey={selectedMonthKey}
+        onSelect={setSelectedMonthKey}
       />
     </div>
   );
