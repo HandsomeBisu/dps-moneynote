@@ -24,11 +24,15 @@ const TransactionItem: React.FC<Props> = ({ transaction }) => {
           </span>
         </div>
       </div>
-      <div className="text-right">
+      <div className="text-right flex flex-col items-end">
         <span className={`text-[17px] font-bold ${isIncome ? 'text-blue-500' : 'text-gray-900'}`}>
-          {isIncome ? '+' : ''}{formatCurrency(transaction.amount)}원
+          {isIncome ? '' : '-'}{formatCurrency(transaction.amount)}원
         </span>
-        {/* Optional balance after transaction or other meta could go here */}
+        {transaction.balanceAfter !== undefined && (
+          <span className="text-[12px] text-gray-400 mt-0.5 font-medium">
+            {formatCurrency(transaction.balanceAfter)}원
+          </span>
+        )}
       </div>
     </div>
   );

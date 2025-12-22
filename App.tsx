@@ -5,16 +5,23 @@ import { Transaction, DailyGroup } from './types';
 import { formatCurrency, formatDateTitle } from './utils/format';
 import TransactionItem from './components/TransactionItem';
 import AddTransactionSheet from './components/AddTransactionSheet';
+import CalendarSheet from './components/CalendarSheet';
 import LoginScreen from './components/LoginScreen';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [rawTransactions, setRawTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // State for UI controls
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [showButton, setShowButton] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
+
+  // Month Filtering State
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>(''); // Format: "YYYY-MM"
 
   // Monitor Auth State
   useEffect(() => {
@@ -28,15 +35,35 @@ const App: React.FC = () => {
   // Subscribe to real-time data ONLY when user is logged in
   useEffect(() => {
     if (!user) {
-      setTransactions([]);
+      setRawTransactions([]);
       setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
     const unsubscribeData = subscribeTransactions(user.uid, (data) => {
-      setTransactions(data);
+      // 1. Sort Ascending (Oldest -> Newest) to calculate running balance
+      const sortedAsc = [...data].sort((a, b) => a.date.getTime() - b.date.getTime());
+      
+      let runningBalance = 0;
+      const calculatedTransactions = sortedAsc.map(t => {
+        if (t.type === 'income') {
+          runningBalance += t.amount;
+        } else {
+          runningBalance -= t.amount;
+        }
+        return { ...t, balanceAfter: runningBalance };
+      });
+
+      // 2. Set state. We will sort back to Descending for display in derived state.
+      setRawTransactions(calculatedTransactions);
       setIsLoading(false);
+      
+      // Default to current month if not set
+      if (!selectedMonthKey) {
+        const now = new Date();
+        setSelectedMonthKey(`${now.getFullYear()}-${now.getMonth() + 1}`);
+      }
     });
     return () => unsubscribeData();
   }, [user]);
@@ -57,30 +84,67 @@ const App: React.FC = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [lastScrollY]);
 
-  // Calculate Total Balance (Simple Income - Expense)
-  const totalBalance = useMemo(() => {
-    return transactions.reduce((acc, curr) => {
-      return curr.type === 'income' ? acc + curr.amount : acc - curr.amount;
-    }, 0);
-  }, [transactions]);
+  // --- Derived Data Calculations ---
 
-  // Calculate Monthly Expense (Expense only)
-  const monthlyExpense = useMemo(() => {
+  // 1. Available Months for Dropdown
+  const availableMonths = useMemo(() => {
+    const monthsSet = new Set<string>();
+    rawTransactions.forEach(t => {
+      const key = `${t.date.getFullYear()}-${t.date.getMonth() + 1}`;
+      monthsSet.add(key);
+    });
+    
+    // Always include current month
     const now = new Date();
-    return transactions.reduce((acc, curr) => {
-      const isSameMonth = curr.date.getMonth() === now.getMonth() && curr.date.getFullYear() === now.getFullYear();
-      if (isSameMonth && curr.type === 'expense') {
+    const currentKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
+    monthsSet.add(currentKey);
+
+    // Sort Descending (Newest Month first)
+    return Array.from(monthsSet).sort((a, b) => {
+      const [yA, mA] = a.split('-').map(Number);
+      const [yB, mB] = b.split('-').map(Number);
+      return yB !== yA ? yB - yA : mB - mA;
+    });
+  }, [rawTransactions]);
+
+  // 2. Filter Transactions by Selected Month & Sort Descending for Display
+  const filteredTransactions = useMemo(() => {
+    if (!selectedMonthKey) return [];
+    
+    const [year, month] = selectedMonthKey.split('-').map(Number);
+    
+    return rawTransactions
+      .filter(t => 
+        t.date.getFullYear() === year && 
+        (t.date.getMonth() + 1) === month
+      )
+      .sort((a, b) => b.date.getTime() - a.date.getTime()); // Newest first
+  }, [rawTransactions, selectedMonthKey]);
+
+  // 3. Calculate Monthly Expense (Expense only in selected month)
+  const monthlyExpense = useMemo(() => {
+    return filteredTransactions.reduce((acc, curr) => {
+      if (curr.type === 'expense') {
         return acc + curr.amount;
       }
       return acc;
     }, 0);
-  }, [transactions]);
+  }, [filteredTransactions]);
 
-  // Group transactions by date
+  // 4. Calculate Total Current Balance (Using the very last transaction in time)
+  const totalBalance = useMemo(() => {
+    if (rawTransactions.length === 0) return 0;
+    // rawTransactions is sorted Oldest -> Newest implicitly by the logic in useEffect?
+    // Wait, in useEffect we did map on sortedAsc. So rawTransactions is Oldest -> Newest.
+    // The last element has the latest balance.
+    return rawTransactions[rawTransactions.length - 1].balanceAfter || 0;
+  }, [rawTransactions]);
+
+  // 5. Group by Date for List View
   const groupedTransactions = useMemo(() => {
     const groups: { [key: string]: DailyGroup } = {};
     
-    transactions.forEach(t => {
+    filteredTransactions.forEach(t => {
       const dateKey = `${t.date.getFullYear()}-${t.date.getMonth()}-${t.date.getDate()}`;
       if (!groups[dateKey]) {
         groups[dateKey] = {
@@ -97,9 +161,9 @@ const App: React.FC = () => {
       // Sort groups descending by date
       new Date(b.transactions[0].date).getTime() - new Date(a.transactions[0].date).getTime()
     );
-  }, [transactions]);
+  }, [filteredTransactions]);
 
-  // Render Logic
+  // --- Render ---
 
   if (authChecking) {
     return (
@@ -133,10 +197,30 @@ const App: React.FC = () => {
 
       <main className="max-w-md mx-auto px-5 pt-2">
         
-        {/* Main Balance Card */}
+        {/* Main Balance Card with Dropdown */}
         <section className="mb-8">
           <div className="flex flex-col gap-1">
-            <span className="text-sm font-semibold text-gray-500">이번 달 쓴 돈</span>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-sm font-semibold text-gray-500">이번 달 쓴 돈</span>
+              
+              {/* Custom Dropdown Trigger */}
+              <div className="relative inline-block">
+                <select 
+                  value={selectedMonthKey}
+                  onChange={(e) => setSelectedMonthKey(e.target.value)}
+                  className="appearance-none bg-transparent text-sm font-bold text-blue-600 pr-6 pl-1 py-0.5 outline-none cursor-pointer hover:bg-gray-100 rounded-md transition-colors"
+                >
+                  {availableMonths.map(key => {
+                     const [y, m] = key.split('-');
+                     return <option key={key} value={key}>{y}년 {m}월</option>
+                  })}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-1 flex items-center text-blue-600">
+                  <svg className="fill-current h-3 w-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                </div>
+              </div>
+            </div>
+
             <div className="flex items-baseline gap-1">
                <span className="text-3xl font-bold text-gray-900 tracking-tight">
                  {formatCurrency(monthlyExpense)}
@@ -146,15 +230,19 @@ const App: React.FC = () => {
           </div>
           
           {/* Mini Dashboard / Current Balance */}
-          <div className="mt-6 bg-white p-5 rounded-[24px] shadow-sm flex justify-between items-center cursor-pointer active:scale-[0.99] transition-transform">
+          <div 
+            onClick={() => setIsCalendarOpen(true)}
+            className="mt-6 bg-white p-5 rounded-[24px] shadow-sm flex justify-between items-center cursor-pointer active:scale-[0.98] transition-transform hover:shadow-md"
+          >
              <div>
                <div className="text-xs font-semibold text-gray-400 mb-1">현재 잔액</div>
                <div className="text-lg font-bold text-gray-800">{formatCurrency(totalBalance)}원</div>
              </div>
              <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400">
-               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-               </svg>
+                {/* Calendar Icon */}
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
              </div>
           </div>
         </section>
@@ -162,7 +250,6 @@ const App: React.FC = () => {
         {/* Transactions List */}
         <section className="space-y-6">
           {isLoading ? (
-             // Skeleton Loader
              [1, 2, 3].map(i => (
                <div key={i} className="animate-pulse space-y-4">
                  <div className="h-4 bg-gray-200 rounded w-16 mb-2"></div>
@@ -170,11 +257,11 @@ const App: React.FC = () => {
                  <div className="h-16 bg-white rounded-2xl"></div>
                </div>
              ))
-          ) : transactions.length === 0 ? (
+          ) : filteredTransactions.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
-              <div className="text-4xl mb-4">📝</div>
-              <p className="text-gray-500 font-medium">아직 내역이 없어요.</p>
-              <p className="text-gray-400 text-sm mt-1">아래 + 버튼을 눌러 기록해보세요.</p>
+              <div className="text-4xl mb-4">💸</div>
+              <p className="text-gray-500 font-medium">이 달의 내역이 없어요.</p>
+              <p className="text-gray-400 text-sm mt-1">지갑이 편안해하고 있어요.</p>
             </div>
           ) : (
             groupedTransactions.map((group) => (
@@ -186,7 +273,6 @@ const App: React.FC = () => {
                   {group.transactions.map((t, idx) => (
                     <React.Fragment key={t.id}>
                       <TransactionItem transaction={t} />
-                      {/* Separator if not last item */}
                       {idx < group.transactions.length - 1 && (
                         <div className="h-[1px] bg-gray-100 ml-14" />
                       )}
@@ -216,6 +302,12 @@ const App: React.FC = () => {
       <AddTransactionSheet 
         isOpen={isAddSheetOpen} 
         onClose={() => setIsAddSheetOpen(false)} 
+      />
+
+      <CalendarSheet 
+        isOpen={isCalendarOpen}
+        onClose={() => setIsCalendarOpen(false)}
+        transactions={rawTransactions}
       />
     </div>
   );
