@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { addTransaction, updateTransaction, auth } from '../services/firebase';
 import { Transaction, TransactionType } from '../types';
+import { toInputDateString } from '../utils/format';
 
 interface Props {
   isOpen: boolean;
@@ -12,6 +13,7 @@ const AddTransactionSheet: React.FC<Props> = ({ isOpen, onClose, initialTransact
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<TransactionType>('expense');
+  const [dateStr, setDateStr] = useState(''); // YYYY-MM-DD string for input
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [animationClass, setAnimationClass] = useState('translate-y-full');
 
@@ -25,11 +27,13 @@ const AddTransactionSheet: React.FC<Props> = ({ isOpen, onClose, initialTransact
         setAmount(String(initialTransaction.amount));
         setDescription(initialTransaction.description);
         setType(initialTransaction.type);
+        setDateStr(toInputDateString(initialTransaction.date));
       } else {
         // Add Mode: Reset fields
         setAmount('');
         setDescription('');
         setType('expense');
+        setDateStr(toInputDateString(new Date())); // Default to today
       }
     } else {
       setAnimationClass('translate-y-full');
@@ -39,7 +43,7 @@ const AddTransactionSheet: React.FC<Props> = ({ isOpen, onClose, initialTransact
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amount || !description) return;
+    if (!amount || !description || !dateStr) return;
     
     // Ensure user is logged in
     const user = auth.currentUser;
@@ -52,16 +56,33 @@ const AddTransactionSheet: React.FC<Props> = ({ isOpen, onClose, initialTransact
     try {
       const numAmount = Number(amount.replace(/,/g, ''));
       
+      // Parse date string to Date object
+      // We create the date using year, month, day to avoid timezone offsets causing it to be the previous day
+      const [year, month, day] = dateStr.split('-').map(Number);
+      const selectedDate = new Date(year, month - 1, day);
+      // Set current time to keep order if it's today, otherwise default to noon to be safe
+      const now = new Date();
+      if (
+        selectedDate.getFullYear() === now.getFullYear() && 
+        selectedDate.getMonth() === now.getMonth() && 
+        selectedDate.getDate() === now.getDate()
+      ) {
+        selectedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+      } else {
+        selectedDate.setHours(12, 0, 0);
+      }
+      
       if (initialTransaction) {
         // Update
         await updateTransaction(initialTransaction.id, {
           amount: numAmount,
           description,
-          type
+          type,
+          date: selectedDate
         });
       } else {
         // Create
-        await addTransaction(user.uid, numAmount, description, type);
+        await addTransaction(user.uid, numAmount, description, type, selectedDate);
       }
 
       onClose();
@@ -124,6 +145,27 @@ const AddTransactionSheet: React.FC<Props> = ({ isOpen, onClose, initialTransact
             </button>
           </div>
 
+          {/* Date Picker (New) */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 mb-2">언제 쓰셨나요?</label>
+            <div className="relative">
+              <input
+                type="date"
+                required
+                value={dateStr}
+                onChange={(e) => setDateStr(e.target.value)}
+                className="w-full bg-gray-50 rounded-xl px-4 py-3.5 text-gray-900 font-bold placeholder-gray-400 outline-none focus:ring-2 focus:ring-blue-500/20 transition-all appearance-none"
+              />
+               {/* Custom Calendar Icon Overlay to make it look nicer if needed, 
+                   but native inputs are usually good on mobile */}
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
           {/* Amount Input */}
           <div>
             <label className="block text-xs font-semibold text-gray-500 mb-1">금액</label>
@@ -155,7 +197,7 @@ const AddTransactionSheet: React.FC<Props> = ({ isOpen, onClose, initialTransact
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={!amount || !description || isSubmitting}
+            disabled={!amount || !description || !dateStr || isSubmitting}
             className={`
               w-full py-4 rounded-xl text-white font-bold text-lg shadow-lg
               transition-all duration-200 active:scale-[0.98]

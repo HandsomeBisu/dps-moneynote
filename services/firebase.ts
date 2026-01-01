@@ -65,7 +65,8 @@ export const addTransaction = async (
   userId: string,
   amount: number, 
   description: string, 
-  type: 'income' | 'expense'
+  type: 'income' | 'expense',
+  date: Date
 ) => {
   try {
     if (!userId) throw new Error("User ID is required");
@@ -75,7 +76,7 @@ export const addTransaction = async (
       amount,
       description,
       type,
-      date: serverTimestamp(),
+      date: date, // Use the provided date object
       category: type === 'income' ? 'Salary' : 'General'
     });
   } catch (e) {
@@ -86,16 +87,15 @@ export const addTransaction = async (
 
 export const updateTransaction = async (
   transactionId: string,
-  data: { amount: number; description: string; type: 'income' | 'expense' }
+  data: { amount: number; description: string; type: 'income' | 'expense', date: Date }
 ) => {
   try {
     const docRef = doc(db, COLLECTION_NAME, transactionId);
     await updateDoc(docRef, {
       amount: data.amount,
       description: data.description,
-      type: data.type
-      // Note: We typically don't update the 'date' unless requested, 
-      // keeping the original transaction time.
+      type: data.type,
+      date: data.date
     });
   } catch (e) {
     console.error("Error updating document: ", e);
