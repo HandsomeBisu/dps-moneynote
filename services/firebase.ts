@@ -77,6 +77,7 @@ export const addTransaction = async (
       description,
       type,
       date: date, // Use the provided date object
+      createdAt: serverTimestamp(),
       category: type === 'income' ? 'Salary' : 'General'
     });
   } catch (e) {
@@ -128,6 +129,7 @@ export const subscribeTransactions = (userId: string, callback: (data: Transacti
     querySnapshot.forEach((doc) => {
       const data = doc.data();
       const date = data.date instanceof Timestamp ? data.date.toDate() : new Date();
+      const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : undefined;
       
       transactions.push({
         id: doc.id,
@@ -136,11 +138,12 @@ export const subscribeTransactions = (userId: string, callback: (data: Transacti
         description: data.description || 'No description',
         type: data.type as 'income' | 'expense',
         date: date,
+        createdAt: createdAt,
         category: data.category
       });
     });
 
-    // Client-side sort: Descending by date
+    // Initial sort (will be refined in App.tsx)
     transactions.sort((a, b) => b.date.getTime() - a.date.getTime());
 
     callback(transactions);

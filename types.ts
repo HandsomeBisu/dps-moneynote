@@ -5,6 +5,7 @@ export interface Transaction {
   description: string;
   type: 'expense' | 'income';
   date: Date; // We will convert Firestore Timestamp to JS Date in service
+  createdAt?: Date; // Timestamp when the record was created
   category?: string;
   balanceAfter?: number; // Calculated field: Balance after this transaction occurred
 }

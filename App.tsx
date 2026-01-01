@@ -83,7 +83,16 @@ const App: React.FC = () => {
     setIsLoading(true);
     const unsubscribeData = subscribeTransactions(user.uid, (data) => {
       // 1. Sort Ascending (Oldest -> Newest) to calculate running balance
-      const sortedAsc = [...data].sort((a, b) => a.date.getTime() - b.date.getTime());
+      // Primary Sort: Date
+      // Secondary Sort: createdAt (so later entries on same day are processed later)
+      const sortedAsc = [...data].sort((a, b) => {
+        const timeDiff = a.date.getTime() - b.date.getTime();
+        if (timeDiff !== 0) return timeDiff;
+        
+        const createdA = a.createdAt ? a.createdAt.getTime() : 0;
+        const createdB = b.createdAt ? b.createdAt.getTime() : 0;
+        return createdA - createdB;
+      });
       
       let runningBalance = 0;
       const calculatedTransactions = sortedAsc.map(t => {
@@ -166,7 +175,15 @@ const App: React.FC = () => {
         t.date.getFullYear() === year && 
         (t.date.getMonth() + 1) === month
       )
-      .sort((a, b) => b.date.getTime() - a.date.getTime()); // Newest first
+      .sort((a, b) => {
+        // Descending Sort: Newest First
+        const timeDiff = b.date.getTime() - a.date.getTime();
+        if (timeDiff !== 0) return timeDiff;
+        
+        const createdA = a.createdAt ? a.createdAt.getTime() : 0;
+        const createdB = b.createdAt ? b.createdAt.getTime() : 0;
+        return createdB - createdA;
+      });
   }, [rawTransactions, selectedMonthKey]);
 
   // 3. Calculate Monthly Expense (Expense only in selected month)
@@ -182,6 +199,7 @@ const App: React.FC = () => {
   // 4. Calculate Total Current Balance (Using the very last transaction in time)
   const totalBalance = useMemo(() => {
     if (rawTransactions.length === 0) return 0;
+    // rawTransactions is sorted ASC in the effect, so last element is the latest balance
     return rawTransactions[rawTransactions.length - 1].balanceAfter || 0;
   }, [rawTransactions]);
 
